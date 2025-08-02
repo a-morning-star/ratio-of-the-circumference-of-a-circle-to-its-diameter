@@ -1,0 +1,196 @@
+#include <iostream>
+#include <vector>
+#include <string>
+#include <algorithm>
+#include <cmath>
+using namespace std;
+
+// 高精度整数类（基数为10^9）
+class BigInt {
+public:
+    static const long long BASE = 1000000000; // 10^9
+    vector<long long> digits;                // 低位在前
+    bool is_negative = false;
+
+    // 构造函数
+    BigInt() {}
+    BigInt(long long num) {
+        if (num == 0) digits.push_back(0);
+        while (num) {
+            digits.push_back(num % BASE);
+            num /= BASE;
+        }
+    }
+
+    // 从字符串构造（仅支持非负整数）
+    BigInt(string s) {
+        if (s.empty()) {
+            digits.push_back(0);
+            return;
+        }
+        int len = s.length();
+        for (int i = len; i > 0; i -= 9) {
+            int start = max(0, i - 9);
+            string block = s.substr(start, i - start);
+            digits.push_back(stoll(block));
+        }
+        remove_leading_zeros();
+    }
+
+    // 移除前导零
+    void remove_leading_zeros() {
+        while (digits.size() > 1 && digits.back() == 0)
+            digits.pop_back();
+        if (digits.empty()) digits.push_back(0);
+    }
+
+    // 转换为字符串
+    string to_string() const {
+        string s;
+        for (int i = digits.size() - 1; i >= 0; i--) {
+            string block = std::to_string(digits[i]);
+            if (i < digits.size() - 1) {
+                // 补充前导零（除了最高位块）
+                block = string(9 - block.length(), '0') + block;
+            }
+            s += block;
+        }
+        return s;
+    }
+
+    // 加法
+    BigInt operator+(const BigInt& other) const {
+        BigInt res;
+        long long carry = 0;
+        int max_size = max(digits.size(), other.digits.size());
+
+        for (int i = 0; i < max_size || carry; i++) {
+            long long sum = carry;
+            if (i < digits.size()) sum += digits[i];
+            if (i < other.digits.size()) sum += other.digits[i];
+            carry = sum / BASE;
+            res.digits.push_back(sum % BASE);
+        }
+        return res;
+    }
+
+    // 减法（仅支持 this >= other）
+    BigInt operator-(const BigInt& other) const {
+        BigInt res;
+        long long borrow = 0;
+        for (int i = 0; i < digits.size(); i++) {
+            long long diff = digits[i] - borrow;
+            if (i < other.digits.size()) diff -= other.digits[i];
+            borrow = 0;
+            if (diff < 0) {
+                diff += BASE;
+                borrow = 1;
+            }
+            res.digits.push_back(diff);
+        }
+        res.remove_leading_zeros();
+        return res;
+    }
+
+    // 乘法（大整数乘小整数）
+    BigInt operator*(long long num) const {
+        if (num == 0) return BigInt(0);
+        BigInt res;
+        long long carry = 0;
+        for (int i = 0; i < digits.size() || carry; i++) {
+            if (i < digits.size()) {
+                carry += digits[i] * num;
+            }
+            res.digits.push_back(carry % BASE);
+            carry /= BASE;
+        }
+        res.remove_leading_zeros();
+        return res;
+    }
+
+    // 除法（大整数除小整数）
+    BigInt operator/(long long divisor) const {
+        BigInt res;
+        long long remainder = 0;
+        res.digits.resize(digits.size());
+        
+        for (int i = digits.size() - 1; i >= 0; i--) {
+            long long cur = digits[i] + remainder * BASE;
+            res.digits[i] = cur / divisor;
+            remainder = cur % divisor;
+        }
+        res.remove_leading_zeros();
+        return res;
+    }
+
+    // 取模（大整数模小整数）
+    long long operator%(long long divisor) const {
+        long long remainder = 0;
+        for (int i = digits.size() - 1; i >= 0; i--) {
+            long long cur = digits[i] + remainder * BASE;
+            remainder = cur % divisor;
+        }
+        return remainder;
+    }
+
+    // 比较是否为零
+    bool is_zero() const {
+        return digits.size() == 1 && digits[0] == 0;
+    }
+};
+
+int main() {
+    int a;
+    cout << "你要获得圆周率的几位小数？：";
+    cin >> a;
+    if (a < 0) {
+        cout << "位数不能为负" << endl;
+        return 1;
+    }
+
+    int n_total = a + 4;  // 多保留4位用于四舍五入
+    // 初始化 p = 2 * 10^(n_total)
+    string init_str = "2" + string(n_total, '0');
+    BigInt p(init_str);
+    
+    // 计算第一项 a_val = p // 3
+    BigInt a_val = p / 3;
+    p = p + a_val;
+    
+    // 迭代计算
+    long long i = 2;
+    while (!a_val.is_zero()) {
+        // 递推公式: a_val = a_val * i // (2*i+1)
+        a_val = (a_val * i) / (2*i + 1);
+        p = p + a_val;
+        i++;
+    }
+    
+    // 移除最后4位小数（相当于除以10000）
+    BigInt p_final = p / 10000;
+    long long remainder = p % 10000;
+    
+    // 四舍五入
+    if (remainder >= 5000) {
+        p_final = p_final + BigInt(1);
+    }
+    
+    // 格式化为字符串
+    string result = p_final.to_string();
+    
+    // 确保结果长度正确（整数部分 + a位小数）
+    if (result.length() < a + 1) {
+        result = string(a + 1 - result.length(), '0') + result;
+    } else if (result.length() > a + 1) {
+        result = result.substr(0, a + 1);
+    }
+    
+    // 输出结果（整数部分 + 小数部分）
+    cout << result[0] << ".";
+    if (a > 0) {
+        cout << result.substr(1, a);
+    }
+    cout << endl;
+
+    return 0;
+}
